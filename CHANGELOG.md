@@ -107,6 +107,12 @@
   [TheSmokeDev](https://github.com/TheSmokeDev) for the credential handling
   from #653.
 
+- **Docker install path.** `docker compose up` builds the pinned Node image and
+  serves the app on `http://localhost:4173` with no local Node install. The repo
+  is bind-mounted and the container runs as the host user, so `.env`,
+  `.gev-cache`, and `.gev-logs` persist on the host exactly as they do under
+  `npm run dev`.
+
 - Stdio servers from one install share a panel key so a page read from one
   process can make requests through another. Concurrent malformed-key repairs
   now select one winner; unavailable storage or a busy repair retains the
