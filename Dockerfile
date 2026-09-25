@@ -9,6 +9,10 @@ FROM node:24-slim
 ENV PUPPETEER_SKIP_DOWNLOAD=1
 WORKDIR /app
 
+# `npm test` builds fixtures with `git init`, so the suite cannot run in a
+# container without it (71 failures on node:24-slim, all ENOENT on git).
+RUN apt-get update   && apt-get install -y --no-install-recommends git   && rm -rf /var/lib/apt/lists/*
+
 COPY package.json package-lock.json ./
 RUN npm ci
 # compose runs the container as the host user so bind-mounted files stay
@@ -25,4 +29,7 @@ COPY . .
 ENV HOST=0.0.0.0
 ENV PORT=4173
 EXPOSE 4173
-CMD ["npm", "run", "dev"]
+# The launcher is `npm run dev` plus one step: it trusts the container's
+# gateway address for Provider Settings, because that is where Docker delivers
+# the host's own browser from (never 127.0.0.1). See scripts/docker-start.mjs.
+CMD ["node", "scripts/docker-start.mjs"]
