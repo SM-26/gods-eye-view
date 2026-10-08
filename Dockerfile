@@ -12,6 +12,11 @@ WORKDIR /app
 # `npm test` builds fixtures with `git init`, so the suite cannot run in a
 # container without it (71 failures on node:24-slim, all ENOENT on git).
 RUN apt-get update   && apt-get install -y --no-install-recommends git   && rm -rf /var/lib/apt/lists/*
+# The repo is bind-mounted, so inside the container it can show an owner other
+# than the user the container runs as - always, on Docker Desktop. git then
+# refuses it as "dubious ownership", which fails the tests that shell out to
+# git. It is the user's own checkout, so trust that one path.
+RUN git config --system --add safe.directory /app
 
 COPY package.json package-lock.json ./
 RUN npm ci

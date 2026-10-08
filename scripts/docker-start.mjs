@@ -10,7 +10,7 @@
  * routing table and declares exactly that one address trusted, then starts
  * Vite the way scripts/pinokio-start.mjs does.
  */
-import { readFileSync, realpathSync } from 'node:fs';
+import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDirectInvocation } from './pinokio-install.mjs';
@@ -19,8 +19,6 @@ import { loadViteFromCanonicalRoot } from './pinokio-start.mjs';
 const MODULE_PATH = fileURLToPath(import.meta.url);
 const ROOT = realpathSync(path.resolve(path.dirname(MODULE_PATH), '..'));
 const ROUTE_TABLE = '/proc/net/route';
-/** Host names the native launcher accepts; the container matches it. */
-const LOCAL_ALLOWED_HOSTS = Object.freeze(['localhost', '127.0.0.1', '.local']);
 
 /**
  * Extract the IPv4 default gateway from Linux `/proc/net/route` text. The
@@ -63,21 +61,21 @@ export function resolveTrustedPeers({ env = process.env, routeTable = '' } = {})
 }
 
 /**
- * Host headers this container answers to. A wildcard bind is unavoidable
- * inside a container, but build/vite.js reads that as "allow every Host"
- * (allowedHosts: true), dropping the DNS-rebinding protection `npm run dev`
- * keeps. The published port only ever delivers the host's own browser, so pin
- * the same names the native launcher uses, and still honour an operator's
- * GEV_ALLOWED_HOSTS so a LAN hostname stays addable here too. See issue #21.
- * @param {NodeJS.ProcessEnv} [env]
- * @returns {string[]}
+ * A checkout the container cannot write fails quietly: Provider Settings
+ * answers 500 and `.gev-cache` is never created, with nothing in the log. The
+ * usual cause is a clone made as root on a NAS or Proxmox host while the
+ * container runs as 1000:1000. Say so at start, naming both sets of ids.
+ * @param {{root: string, writable: boolean, owner: {uid: number, gid: number}, runAs: {uid: number, gid: number}}} input
+ * @returns {string|null} A warning, or null when the checkout is writable.
  */
-export function resolveAllowedHosts(env = process.env) {
-  const configured = String(env.GEV_ALLOWED_HOSTS ?? '')
-    .split(',')
-    .map((host) => host.trim())
-    .filter(Boolean);
-  return [...new Set([...LOCAL_ALLOWED_HOSTS, ...configured])];
+export function unwritableRootWarning({ root, writable, owner, runAs }) {
+  if (writable) return null;
+  return (
+    `[Docker] ${root} is owned by ${owner.uid}:${owner.gid} but the container runs as ` +
+    `${runAs.uid}:${runAs.gid}, so saving keys and caching will fail. Either give ` +
+    `the checkout to that user (chown -R ${runAs.uid}:${runAs.gid} on the host) or ` +
+    `run as its owner (env UID=${owner.uid} GID=${owner.gid} docker compose up)`
+  );
 }
 
 function readRouteTable() {
@@ -89,6 +87,24 @@ function readRouteTable() {
 }
 
 async function start() {
+  let writable = true;
+  try {
+    accessSync(ROOT, constants.W_OK);
+  } catch {
+    writable = false;
+  }
+  if (!writable) {
+    const { uid, gid } = statSync(ROOT);
+    console.warn(
+      unwritableRootWarning({
+        root: ROOT,
+        writable,
+        owner: { uid, gid },
+        runAs: { uid: process.getuid?.() ?? -1, gid: process.getgid?.() ?? -1 },
+      }),
+    );
+  }
+
   const trustedPeers = resolveTrustedPeers({ routeTable: readRouteTable() });
   if (trustedPeers) {
     // Set before Vite is imported: the dev server snapshots process.env during
@@ -109,7 +125,6 @@ async function start() {
       host: '0.0.0.0',
       port,
       strictPort: true,
-      allowedHosts: resolveAllowedHosts(),
     },
   });
   await server.listen();

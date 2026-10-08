@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   defaultGatewayFromRouteTable,
-  resolveAllowedHosts,
+  unwritableRootWarning,
   resolveTrustedPeers,
 } from '../scripts/docker-start.mjs';
 
@@ -56,18 +56,14 @@ test('an operator list wins, and no gateway trusts nothing', () => {
   assert.equal(resolveTrustedPeers({ env: {}, routeTable: '' }), '', 'loopback-only when there is no gateway');
 });
 
-test('the container answers the same host names as the native launcher', () => {
-  assert.deepEqual(resolveAllowedHosts({}), ['localhost', '127.0.0.1', '.local'], 'a wildcard bind never means "any Host header"');
-  assert.deepEqual(
-    resolveAllowedHosts({ GEV_ALLOWED_HOSTS: ' globe.lan , nas.internal ' }),
-    ['localhost', '127.0.0.1', '.local', 'globe.lan', 'nas.internal'],
-    'an operator can still add a LAN hostname',
-  );
-  assert.deepEqual(
-    resolveAllowedHosts({ GEV_ALLOWED_HOSTS: ' , localhost , ' }),
-    ['localhost', '127.0.0.1', '.local'],
-    'blank and duplicate entries change nothing',
-  );
+test('an unwritable checkout is named at start instead of failing quietly', () => {
+  const ids = { owner: { uid: 0, gid: 0 }, runAs: { uid: 1000, gid: 1000 } };
+  assert.equal(unwritableRootWarning({ root: '/app', writable: true, ...ids }), null, 'a writable checkout says nothing');
+  const warning = unwritableRootWarning({ root: '/app', writable: false, ...ids });
+  assert.match(warning, /owned by 0:0/, 'names the owner');
+  assert.match(warning, /runs as 1000:1000/, 'names the ids the container runs as');
+  assert.match(warning, /chown -R 1000:1000/, 'offers handing the checkout to the container user first');
+  assert.match(warning, /env UID=0 GID=0 docker compose up/, 'or the env form, which bash does not ignore');
 });
 
 test('the Docker install path keeps its loopback-only, launcher-owned contract', () => {

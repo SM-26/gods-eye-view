@@ -141,7 +141,10 @@ const LOOPBACK_ADDRESSES = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
  */
 function isTrustedPeerAddress(remoteAddress, env) {
   const normalize = (value) =>
-    String(value || '').trim().toLowerCase().replace(/^::ffff:/, '');
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/^::ffff:/, '');
   const address = normalize(remoteAddress);
   if (!address) return false;
   return String(env?.GEV_KEY_SETUP_TRUSTED_PEERS || '')
