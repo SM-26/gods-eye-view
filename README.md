@@ -155,24 +155,37 @@ cd gods-eye-view
 docker compose up
 ```
 
-Open **`http://localhost:4173`** as above. The repo is bind-mounted, so `.env`,
-`.gev-cache` and `.gev-logs` live on the host, edits still hot-reload, and keys
-you save from Provider Settings survive `docker compose down`. The port is
-published to `127.0.0.1` only, so the default matches the native one.
+Open **`http://localhost:4173`** as above. Everything the app saves stays in the folder you cloned, so `docker compose down` never loses anything:
 
-Publishing it wider is the [Sharing an instance](#-sharing-an-instance) opt-in,
-and it hands out **Provider Settings** too: the launcher trusts the container
-gateway as this machine, and a wider publish delivers everyone else from that
-same address. For an instance you mean to share, put the keys in `.env` by hand
-instead. [SECURITY.md](SECURITY.md) has the detail.
+- `.env` - your API keys, whether saved from Provider Settings or typed in by hand
+- `.gev-cache/` - downloaded map and satellite data, so later starts are faster
+- `.gev-logs/` - logs
+
+Back up that folder and you've backed up everything; delete `.env` to forget your keys. Source edits still hot-reload. The port is published to `127.0.0.1` only, so the default matches the native one.
+
+Publishing it wider is the [Sharing an instance](#-sharing-an-instance) opt-in, and it hands out **Provider Settings** too: the launcher trusts the container gateway as this machine, and a wider publish delivers everyone else from that same address. For an instance you mean to share, put the keys in `.env` by hand instead. [SECURITY.md](SECURITY.md) has the detail.
 
 <details>
-<summary>File ownership on Linux and NAS hosts</summary>
+<summary>Running on Linux, a NAS, or behind a reverse proxy</summary>
 
-On Linux, export your ids first so the files the container writes stay yours:
-`export UID GID` before `docker compose up`. On a NAS or anywhere the share has
-its own owner, set them explicitly instead (`UID=1026 GID=100 docker compose
-up`) — Docker Desktop on macOS and Windows maps ownership for you.
+Run it as the user who should own the files it writes. `id` shows the numbers; for yourself on Linux:
+
+```bash
+env UID=$(id -u) GID=$(id -g) docker compose up
+```
+
+On a NAS, clone onto the share you want the data on and use the share owner's ids:
+
+```bash
+cd /volume1/docker
+git clone https://github.com/bilawalsidhu/gods-eye-view.git
+cd gods-eye-view
+env UID=1026 GID=100 docker compose up -d
+```
+
+Keep the `env`: bash treats `UID` as read-only, so a plain `UID=1026` in front of a command is silently ignored. If the container can't write the checkout, it says so at start. Docker Desktop on macOS and Windows maps ownership for you.
+
+Behind a reverse proxy, put your keys in `.env` or pass them as environment variables - Provider Settings refuses proxied requests on purpose - and add the hostname you serve it on, for example `GEV_ALLOWED_HOSTS=globe.example.lan` (see [Sharing an instance](#-sharing-an-instance)).
 
 </details>
 
